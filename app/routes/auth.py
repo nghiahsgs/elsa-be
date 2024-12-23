@@ -51,7 +51,7 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     
     # Create access token
     access_token = create_access_token(
-        data={"sub": str(user.email)},  # Convert ID to string for JWT
+        data={"sub": str(user.email), "id": str(user.id)},  # Convert ID to string for JWT
         expires_delta=timedelta(minutes=30)
     )
     return {"access_token": access_token, "token_type": "bearer"}
