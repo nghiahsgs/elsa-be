@@ -1,7 +1,8 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import auth, quiz, websocket
+from app.routes import auth, quiz
+from app.websocket import router as websocket_router
 from app.core.config import settings
 
 app = FastAPI(title="Elsa API")
@@ -18,7 +19,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router, prefix="/api", tags=["auth"])
 app.include_router(quiz.router, prefix="/api", tags=["quiz"])
-app.include_router(websocket.router, tags=["websocket"])
+app.include_router(websocket_router, tags=["websocket"])
 
 if __name__ == "__main__":
     uvicorn.run(
