@@ -17,6 +17,7 @@ class Quiz(Base):
     # Relationships
     created_by = relationship("User", back_populates="quizzes")
     questions = relationship("Question", back_populates="quiz", cascade="all, delete-orphan", lazy="selectin")
+    participant_scores = relationship("QuizParticipantScore", back_populates="quiz", cascade="all, delete-orphan")
 
 class Question(Base):
     __tablename__ = "questions"

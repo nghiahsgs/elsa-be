@@ -3,15 +3,45 @@ from app.core.websocket import manager
 from app.core.security import decode_access_token
 from app.db.session import AsyncSessionLocal
 import logging
-from sqlalchemy import select, delete
-from app.models.user import User
-from app.models.quiz import Quiz
-from app.models.quiz_connection import QuizConnection
 import traceback
+from sqlalchemy import select, delete, func
+from app.models.user import User
+from app.models.quiz import Quiz, Question
+from app.models.quiz_connection import QuizConnection
+from app.models.quiz_score import QuizParticipantScore
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # Set to DEBUG level
+logger.setLevel(logging.DEBUG)
+
+async def broadcast_to_room(quiz_code: str, message: dict):
+    """Helper function to broadcast message to all connections in a room"""
+    connections = manager.active_connections.get(quiz_code, set())
+    for connection in connections:
+        await connection.send_json(message)
+
+async def get_leaderboard(db, quiz_id: int):
+    """Helper function to get current leaderboard"""
+    result = await db.execute(
+        select(
+            QuizParticipantScore.user_id,
+            User.email,
+            QuizParticipantScore.score,
+            QuizParticipantScore.questions_answered
+        )
+        .join(User, User.id == QuizParticipantScore.user_id)
+        .where(QuizParticipantScore.quiz_id == quiz_id)
+        .order_by(QuizParticipantScore.score.desc())
+    )
+    leaderboard = []
+    for user_id, email, score, questions_answered in result.all():
+        leaderboard.append({
+            "user_id": str(user_id),
+            "email": email,
+            "score": score,
+            "questions_answered": questions_answered
+        })
+    return leaderboard
 
 @router.websocket("/ws/quiz/{quiz_code}")
 async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
@@ -131,6 +161,101 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                     data = await websocket.receive_json()
                     logger.debug(f"Received message from {current_user.email}: {data}")
                     
+                    if data["type"] == "start_quiz":
+                        # Initialize scores for all participants
+                        participants_query = await db.execute(
+                            select(User.id)
+                            .join(QuizConnection, QuizConnection.user_id == User.id)
+                            .where(QuizConnection.quiz_id == quiz.id)
+                        )
+                        for (user_id,) in participants_query.all():
+                            # Check if score record already exists
+                            existing_score = await db.execute(
+                                select(QuizParticipantScore)
+                                .where(
+                                    QuizParticipantScore.quiz_id == quiz.id,
+                                    QuizParticipantScore.user_id == user_id
+                                )
+                            )
+                            if not existing_score.scalar_one_or_none():
+                                score = QuizParticipantScore(
+                                    quiz_id=quiz.id,
+                                    user_id=user_id,
+                                    score=0,
+                                    questions_answered=0
+                                )
+                                db.add(score)
+                        await db.commit()
+
+                        # Get initial leaderboard
+                        leaderboard = await get_leaderboard(db, quiz.id)
+
+                        # Broadcast start quiz event to all participants
+                        await broadcast_to_room(quiz_code, {
+                            "type": "start_quiz_now",
+                            "quiz_id": str(quiz.id),
+                            "leaderboard": leaderboard
+                        })
+
+                    elif data["type"] == "submit_answer":
+                        question_id = int(data["question_id"])
+                        answer = data["answer"]
+                        
+                        # Get question and verify answer
+                        result = await db.execute(
+                            select(func.json_extract(Question.correct_answer, '$'))
+                            .where(Question.id == question_id)
+                        )
+                        correct_answer = result.scalar_one()
+                        
+                        # Update score if answer is correct
+                        if answer == correct_answer:
+                            result = await db.execute(
+                                select(Question.score)
+                                .where(Question.id == question_id)
+                            )
+                            question_score = result.scalar_one()
+                            
+                            # Update participant's score
+                            await db.execute(
+                                QuizParticipantScore.__table__.update()
+                                .where(
+                                    QuizParticipantScore.quiz_id == quiz.id,
+                                    QuizParticipantScore.user_id == current_user.id
+                                )
+                                .values(
+                                    score=QuizParticipantScore.score + question_score,
+                                    questions_answered=QuizParticipantScore.questions_answered + 1
+                                )
+                            )
+                        else:
+                            # Even for wrong answers, increment questions_answered
+                            await db.execute(
+                                QuizParticipantScore.__table__.update()
+                                .where(
+                                    QuizParticipantScore.quiz_id == quiz.id,
+                                    QuizParticipantScore.user_id == current_user.id
+                                )
+                                .values(
+                                    questions_answered=QuizParticipantScore.questions_answered + 1
+                                )
+                            )
+                        await db.commit()
+
+                        # Get updated leaderboard
+                        leaderboard = await get_leaderboard(db, quiz.id)
+                        
+                        # Broadcast leaderboard update and answer result
+                        await broadcast_to_room(quiz_code, {
+                            "type": "leaderboard_update",
+                            "leaderboard": leaderboard,
+                            "answer_result": {
+                                "user_id": str(current_user.id),
+                                "question_id": question_id,
+                                "is_correct": answer == correct_answer
+                            }
+                        })
+
                     # Get updated participant list from DB
                     result = await db.execute(
                         select(User)

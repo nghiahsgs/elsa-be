@@ -6,7 +6,9 @@ from app.db.session import get_db
 from app.core.security import get_current_user
 from app.core.utils import generate_unique_quiz_code
 from app.schemas.quiz import QuizCreate, Quiz as QuizSchema
+from app.schemas.quiz_connection import QuizParticipantList
 from app.models.quiz import Quiz, Question
+from app.models.quiz_connection import QuizConnection
 from app.models.user import User
 from typing import List
 import json
@@ -212,3 +214,35 @@ async def get_quiz_by_code(
                 "details": [{"field": "", "message": str(e)}]
             }
         )
+
+@router.get("/quizzes/{quiz_id}/participants", response_model=QuizParticipantList)
+async def get_quiz_participants(
+    quiz_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Get all participants of a quiz."""
+    # Check if quiz exists
+    result = await db.execute(
+        select(Quiz).where(Quiz.id == quiz_id)
+    )
+    quiz = result.scalar_one_or_none()
+    if not quiz:
+        raise HTTPException(status_code=404, detail="Quiz not found")
+
+    # Get all participants
+    result = await db.execute(
+        select(User.id, User.email, QuizConnection.connected_at)
+        .join(QuizConnection, QuizConnection.user_id == User.id)
+        .where(QuizConnection.quiz_id == quiz_id)
+    )
+    
+    participants = []
+    for user_id, email, connected_at in result.all():
+        participants.append({
+            "user_id": user_id,
+            "email": email,
+            "connected_at": connected_at
+        })
+    
+    return {"participants": participants}
