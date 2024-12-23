@@ -1,5 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 import logging
 import traceback
 from app.core.security import decode_access_token
@@ -38,7 +38,7 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
 
         try:
             payload = decode_access_token(token)
-            user_id = int(payload.get("sub"))
+            email = payload.get("sub")
         except Exception as e:
             logger.error(f"Token validation failed: {str(e)}")
             await websocket.close(code=4004, reason="Token validation failed")
@@ -48,17 +48,19 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
         db = AsyncSessionLocal()
 
         # Get user and quiz
-        current_user = await db.execute(
-            select(User).where(User.id == user_id)
-        ).scalar_one_or_none()
+        result = await db.execute(
+            select(User).where(User.email == email)
+        )
+        current_user = result.scalar_one_or_none()
 
         if not current_user:
             await websocket.close(code=4002, reason="User not found")
             return
 
-        quiz = await db.execute(
+        result = await db.execute(
             select(Quiz).where(Quiz.code == quiz_code)
-        ).scalar_one_or_none()
+        )
+        quiz = result.scalar_one_or_none()
 
         if not quiz:
             await websocket.close(code=4003, reason="Quiz not found")
