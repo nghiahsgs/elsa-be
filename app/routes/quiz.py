@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.db.session import get_db
 from app.core.security import get_current_user
 from app.core.utils import generate_unique_quiz_code
@@ -31,11 +33,12 @@ async def create_quiz(
             settings=quiz_data.settings.dict()
         )
         db.add(quiz)
+        await db.flush()  # Flush to get the quiz ID
         
         # Create questions
         for i, q_data in enumerate(quiz_data.questions):
             question = Question(
-                quiz=quiz,
+                quiz_id=quiz.id,  # Use quiz.id directly
                 text=q_data.text,
                 options=q_data.options,
                 correct_answer=q_data.correctAnswer,
@@ -45,7 +48,11 @@ async def create_quiz(
             db.add(question)
         
         await db.commit()
-        await db.refresh(quiz)
+        
+        # Get the quiz with questions using eager loading
+        stmt = select(Quiz).options(selectinload(Quiz.questions)).where(Quiz.id == quiz.id)
+        result = await db.execute(stmt)
+        quiz = result.scalar_one()
         
         # Format response
         return {

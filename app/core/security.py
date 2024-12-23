@@ -6,6 +6,7 @@ from app.core.config import settings
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.db.session import get_db
 from app.models.user import User
 
@@ -45,16 +46,17 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
         
-    result = await db.execute("SELECT * FROM users WHERE id = :id", {"id": user_id})
-    user = result.fetchone()
+    try:
+        user_id = int(user_id)  # Convert string ID from JWT to integer
+    except ValueError:
+        raise credentials_exception
+        
+    # Use SQLAlchemy's select statement
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
     
     if user is None:
         raise credentials_exception
         
-    return User(
-        id=user.id,
-        email=user.email,
-        hashed_password=user.hashed_password,
-        created_at=user.created_at,
-        updated_at=user.updated_at
-    )
+    return user

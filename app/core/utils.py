@@ -1,6 +1,7 @@
 import random
 import string
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from app.models.quiz import Quiz
 
 async def generate_unique_quiz_code(db: AsyncSession) -> str:
@@ -11,10 +12,8 @@ async def generate_unique_quiz_code(db: AsyncSession) -> str:
         numbers = ''.join(random.choices(string.digits, k=3))
         code = f"{letters}{numbers}"
         
-        # Check if code exists
-        exists = await db.execute(
-            "SELECT 1 FROM quizzes WHERE code = :code",
-            {"code": code}
-        )
-        if not exists.scalar():
+        # Check if code exists using SQLAlchemy's select
+        stmt = select(Quiz).where(Quiz.code == code)
+        result = await db.execute(stmt)
+        if not result.scalar_one_or_none():
             return code
