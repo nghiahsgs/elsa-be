@@ -65,8 +65,7 @@ async def handle_start_quiz(db, quiz_id: int):
             score = QuizParticipantScore(
                 quiz_id=quiz_id,
                 user_id=user_id,
-                score=0,
-                questions_answered=0
+                score=0
             )
             db.add(score)
     await db.commit()
@@ -77,8 +76,7 @@ async def get_leaderboard(db, quiz_id: int):
         select(
             QuizParticipantScore.user_id,
             User.email,
-            QuizParticipantScore.score,
-            QuizParticipantScore.questions_answered
+            QuizParticipantScore.score
         )
         .join(User, User.id == QuizParticipantScore.user_id)
         .where(QuizParticipantScore.quiz_id == quiz_id)
@@ -88,10 +86,9 @@ async def get_leaderboard(db, quiz_id: int):
         {
             "user_id": str(user_id),
             "email": email,
-            "score": score,
-            "questions_answered": questions_answered
+            "score": score
         }
-        for user_id, email, score, questions_answered in result.all()
+        for user_id, email, score in result.all()
     ]
 
 @router.websocket("/ws/quiz/{quiz_code}")
@@ -212,22 +209,12 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                                 QuizParticipantScore.user_id == current_user.id
                             )
                             .values(
-                                score=QuizParticipantScore.score + question_score,
-                                questions_answered=QuizParticipantScore.questions_answered + 1
+                                score=QuizParticipantScore.score + question_score
                             )
                         )
                     else:
-                        # Update questions answered for wrong answer
-                        await db.execute(
-                            QuizParticipantScore.__table__.update()
-                            .where(
-                                QuizParticipantScore.quiz_id == quiz.id,
-                                QuizParticipantScore.user_id == current_user.id
-                            )
-                            .values(
-                                questions_answered=QuizParticipantScore.questions_answered + 1
-                            )
-                        )
+                        # Wrong answer, no score update needed
+                        pass
                     await db.commit()
 
                     # Get updated leaderboard and broadcast
