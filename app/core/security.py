@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.core.config import settings
@@ -29,6 +29,20 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm="HS256")
     return encoded_jwt
 
+def decode_access_token(token: str) -> Dict[str, Any]:
+    """
+    Decode and verify a JWT token
+    """
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+        return payload
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not validate credentials: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db)
@@ -50,13 +64,10 @@ async def get_current_user(
         user_id = int(user_id)  # Convert string ID from JWT to integer
     except ValueError:
         raise credentials_exception
-        
-    # Use SQLAlchemy's select statement
-    stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
+
+    result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     
     if user is None:
         raise credentials_exception
-        
     return user
