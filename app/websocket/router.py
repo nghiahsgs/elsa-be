@@ -202,6 +202,17 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                     })
                 
                 elif data["type"] == "end_quiz":
+                    # Delete all participant scores for this quiz
+                    await db.execute(
+                        delete(QuizParticipantScore).where(
+                            QuizParticipantScore.quiz_id == quiz.id
+                        )
+                    )
+                    
+                    # Update quiz status to idle
+                    quiz.status = 'idle'
+                    await db.commit()
+                    
                     # Broadcast end_quiz_now to all connections
                     await broadcast_to_quiz(quiz_code, {
                         "type": "end_quiz_now",
