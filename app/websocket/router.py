@@ -1,5 +1,5 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, func
 import logging
 import traceback
 from app.core.security import decode_access_token
@@ -181,19 +181,40 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                 if data["type"] == "start_quiz":
                     await handle_start_quiz(db, quiz.id)
                     leaderboard = await get_leaderboard(db, quiz.id)
+                    
+                    # Format questions
+                    questions = [
+                        {
+                            "id": q.id,
+                            "text": q.text,
+                            "options": q.options,
+                            "correctAnswer": int(q.correct_answer),  # Ensure it's an integer
+                            "score": q.score
+                        }
+                        for q in sorted(quiz.questions, key=lambda x: x.order if x.order is not None else 0)  # Handle None order values
+                    ]
+                    
                     await broadcast_to_quiz(quiz_code, {
                         "type": "start_quiz_now",
                         "quiz_id": str(quiz.id),
-                        "leaderboard": leaderboard
+                        "leaderboard": leaderboard,
+                        "questions": questions
                     })
                 
+                elif data["type"] == "end_quiz":
+                    # Broadcast end_quiz_now to all connections
+                    await broadcast_to_quiz(quiz_code, {
+                        "type": "end_quiz_now",
+                        "quiz_id": str(quiz.id)
+                    })
+
                 elif data["type"] == "submit_answer":
                     question_id = int(data["question_id"])
-                    answer = data["answer"]
+                    answer = int(data["answer"])  # Convert answer to int for comparison
 
                     # Verify answer
                     result = await db.execute(
-                        select(func.json_extract(Question.correct_answer, '$'))
+                        select(Question.correct_answer)
                         .where(Question.id == question_id)
                     )
                     correct_answer = result.scalar_one()
@@ -257,6 +278,14 @@ async def websocket_endpoint(websocket: WebSocket, quiz_code: str):
                         QuizConnection.user_id == current_user.id
                     )
                 )
+                
+                # Delete participant scores
+                await db.execute(
+                    delete(QuizParticipantScore).where(
+                        QuizParticipantScore.user_id == current_user.id
+                    )
+                )
+                
                 await db.commit()
 
                 # Remove from active connections
