@@ -3,6 +3,7 @@ from sqlalchemy import delete, select
 import logging
 import traceback
 from app.core.security import decode_access_token
+from app.core.websocket import ConnectionManager
 from app.db.session import AsyncSessionLocal
 from app.models.user import User
 from app.models.quiz import Quiz, Question
@@ -51,6 +52,11 @@ async def handle_start_quiz(db, quiz_id: int):
         .join(QuizConnection, QuizConnection.user_id == User.id)
         .where(QuizConnection.quiz_id == quiz_id)
     )
+    
+    # Update quiz status to running
+    quiz = await db.execute(select(Quiz).where(Quiz.id == quiz_id))
+    quiz = quiz.scalar_one()
+    quiz.status = 'running'
     
     # Initialize scores
     for (user_id,) in result.all():

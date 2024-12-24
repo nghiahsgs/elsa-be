@@ -39,6 +39,7 @@ class Quiz(QuizBase):
     createdAt: datetime
     createdBy: UserInfo
     questions: List[Question]
+    status: str
 
     class Config:
         from_attributes = True

@@ -13,6 +13,7 @@ class Quiz(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     created_by_id = Column(Integer, ForeignKey("users.id"))
     settings = Column(JSON)
+    status = Column(String(20), default='idle', nullable=False)
 
     # Relationships
     created_by = relationship("User", back_populates="quizzes")

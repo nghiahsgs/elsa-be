@@ -67,6 +67,7 @@ async def create_quiz(
             },
             "title": quiz.title,
             "description": quiz.description,
+            "status": quiz.status,
             "questions": [
                 {
                     "id": q.id,
@@ -91,67 +92,68 @@ async def create_quiz(
             }
         )
 
-@router.get("/quizzes/{quiz_id}", response_model=QuizSchema)
-async def get_quiz(
-    quiz_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """Get quiz details by ID."""
-    try:
-        # Get quiz with questions
-        stmt = select(Quiz).options(
-            selectinload(Quiz.questions),
-            selectinload(Quiz.created_by)
-        ).where(Quiz.id == quiz_id)
-        result = await db.execute(stmt)
-        quiz = result.scalar_one_or_none()
+# @router.get("/quizzes/{quiz_id}", response_model=QuizSchema)
+# async def get_quiz(
+#     quiz_id: int,
+#     current_user: User = Depends(get_current_user),
+#     db: AsyncSession = Depends(get_db)
+# ):
+#     """Get quiz details by ID."""
+#     try:
+#         # Get quiz with questions
+#         stmt = select(Quiz).options(
+#             selectinload(Quiz.questions),
+#             selectinload(Quiz.created_by)
+#         ).where(Quiz.id == quiz_id)
+#         result = await db.execute(stmt)
+#         quiz = result.scalar_one_or_none()
         
-        if not quiz:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "NotFound",
-                    "message": "Quiz not found",
-                    "details": [{"field": "quiz_id", "message": f"Quiz with ID {quiz_id} does not exist"}]
-                }
-            )
+#         if not quiz:
+#             raise HTTPException(
+#                 status_code=404,
+#                 detail={
+#                     "error": "NotFound",
+#                     "message": "Quiz not found",
+#                     "details": [{"field": "quiz_id", "message": f"Quiz with ID {quiz_id} does not exist"}]
+#                 }
+#             )
         
-        # Format response
-        return {
-            "id": quiz.id,
-            "code": quiz.code,
-            "createdAt": quiz.created_at,
-            "createdBy": {
-                "id": quiz.created_by.id,
-                "email": quiz.created_by.email
-            },
-            "title": quiz.title,
-            "description": quiz.description,
-            "questions": [
-                {
-                    "id": q.id,
-                    "text": q.text,
-                    "options": q.options,
-                    "correctAnswer": q.correct_answer,
-                    "score": q.score
-                }
-                for q in sorted(quiz.questions, key=lambda x: x.order)
-            ],
-            "settings": quiz.settings
-        }
+#         # Format response
+#         return {
+#             "id": quiz.id,
+#             "code": quiz.code,
+#             "createdAt": quiz.created_at,
+#             "createdBy": {
+#                 "id": quiz.created_by.id,
+#                 "email": quiz.created_by.email
+#             },
+#             "title": quiz.title,
+#             "description": quiz.description,
+#             "status": quiz.status,
+#             "questions": [
+#                 {
+#                     "id": q.id,
+#                     "text": q.text,
+#                     "options": q.options,
+#                     "correctAnswer": q.correct_answer,
+#                     "score": q.score
+#                 }
+#                 for q in sorted(quiz.questions, key=lambda x: x.order)
+#             ],
+#             "settings": quiz.settings
+#         }
         
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise e
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "ValidationError",
-                "message": "Failed to get quiz",
-                "details": [{"field": "", "message": str(e)}]
-            }
-        )
+#     except Exception as e:
+#         if isinstance(e, HTTPException):
+#             raise e
+#         raise HTTPException(
+#             status_code=400,
+#             detail={
+#                 "error": "ValidationError",
+#                 "message": "Failed to get quiz",
+#                 "details": [{"field": "", "message": str(e)}]
+#             }
+#         )
 
 @router.get("/quizzes/code/{quiz_code}", response_model=QuizSchema)
 async def get_quiz_by_code(
@@ -190,6 +192,7 @@ async def get_quiz_by_code(
             },
             "title": quiz.title,
             "description": quiz.description,
+            "status": quiz.status,
             "questions": [
                 {
                     "id": q.id,
