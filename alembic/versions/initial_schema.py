@@ -1,8 +1,8 @@
-"""initial migration
+"""initial schema
 
-Revision ID: 001
+Revision ID: initial_schema_001
 Revises: 
-Create Date: 2024-12-23 08:02:00.000000
+Create Date: 2024-12-24 09:47:00.000000
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '001'
+revision: str = 'initial_schema_001'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -39,6 +39,7 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=True),
         sa.Column('created_by_id', sa.Integer(), nullable=True),
         sa.Column('settings', sa.JSON(), nullable=True),
+        sa.Column('status', sa.String(20), nullable=False, server_default='idle'),
         sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ),
         sa.PrimaryKeyConstraint('id')
     )
@@ -57,8 +58,40 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id')
     )
 
+    # Create quiz_connections table
+    op.create_table(
+        'quiz_connections',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('quiz_id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('connected_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.ForeignKeyConstraint(['quiz_id'], ['quizzes.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_quiz_connections_id'), 'quiz_connections', ['id'], unique=False)
+
+    # Create quiz_participant_scores table
+    op.create_table(
+        'quiz_participant_scores',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('quiz_id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('score', sa.Float(), nullable=False, server_default='0'),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(['quiz_id'], ['quizzes.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_quiz_participant_scores_id'), 'quiz_participant_scores', ['id'], unique=False)
+
 
 def downgrade() -> None:
+    op.drop_index(op.f('ix_quiz_participant_scores_id'), table_name='quiz_participant_scores')
+    op.drop_table('quiz_participant_scores')
+    op.drop_index(op.f('ix_quiz_connections_id'), table_name='quiz_connections')
+    op.drop_table('quiz_connections')
     op.drop_table('questions')
     op.drop_index(op.f('ix_quizzes_code'), table_name='quizzes')
     op.drop_table('quizzes')
